@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { BrowserMultiFormatReader } from '@zxing/browser';
+import { NotFoundException } from '@zxing/library';
 import { Camera, X, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -86,7 +87,7 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
       }
     } catch (err) {
       // バーコードが見つからない場合は継続してスキャン
-      if (err && typeof err === 'object' && 'name' in err && err.name === 'NotFoundException') {
+      if (err instanceof NotFoundException) {
         // バーコードが見つからない場合は継続してスキャン
         if (isScanning && videoRef.current) {
           setTimeout(() => startScanning(), 100);
