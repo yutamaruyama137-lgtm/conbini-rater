@@ -1,11 +1,11 @@
 import { notFound } from 'next/navigation';
-import Image from 'next/image';
 import { ArrowLeft, Star } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { RatingStars } from '@/components/rating-stars';
+import { ProductImage } from '@/components/product-image';
 import { getProductByBarcode, getRatingsByBarcode, getAverageRating } from '@/lib/db-helpers';
 import { submitRating } from '@/lib/actions';
 
@@ -69,20 +69,12 @@ export default async function ProductPage({ params }: { params: { barcode: strin
 
       <div className="max-w-md mx-auto p-4 space-y-4">
         <Card className="overflow-hidden">
-          <div className="aspect-square relative bg-gray-100">
-            {product.image_url ? (
-              <Image
-                src={product.image_url}
-                alt={product.title_en || product.title_ja}
-                fill
-                className="object-cover"
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-gray-400">
-                No Image
-              </div>
-            )}
-          </div>
+          <ProductImage 
+            imageUrl={product.image_url}
+            titleJa={product.title_ja}
+            titleEn={product.title_en}
+            chain={product.chains[0]}
+          />
 
           <div className="p-4 space-y-3">
             <div>
