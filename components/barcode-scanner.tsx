@@ -59,40 +59,30 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
       );
       const selectedDevice = backCamera || videoInputDevices[0];
 
-      // バーコード読み取りを開始
-      const result = await codeReader.decodeOnceFromVideoDevice(
+      // 継続的にバーコードをスキャン
+      codeReader.decodeFromVideoDevice(
         selectedDevice.deviceId,
-        videoRef.current
-      );
-
-      // バーコードが見つかった場合
-      if (result && result.getText()) {
-        const barcode = result.getText();
-        // バーコードが8-14桁の数字かチェック
-        if (/^\d{8,14}$/.test(barcode)) {
-          // カメラストリームを停止
-          if (videoRef.current) {
-            const stream = videoRef.current.srcObject as MediaStream;
-            if (stream) {
-              stream.getTracks().forEach(track => track.stop());
+        videoRef.current,
+        (result, error) => {
+          if (result) {
+            const barcode = result.getText();
+            // バーコードが8-14桁の数字かチェック
+            if (/^\d{8,14}$/.test(barcode)) {
+              // カメラストリームを停止
+              stopScanning();
+              onScan(barcode);
+            } else {
+              setError('有効なバーコードを読み取れませんでした。8-14桁の数字が必要です。');
             }
-            videoRef.current.srcObject = null;
+          } else if (error && !(error instanceof NotFoundException)) {
+            // NotFoundException以外のエラーのみ表示
+            setError(error.message || 'スキャン中にエラーが発生しました。');
           }
-          codeReaderRef.current = null;
-          setIsScanning(false);
-          onScan(barcode);
-        } else {
-          setError('有効なバーコードを読み取れませんでした。8-14桁の数字が必要です。');
+          // NotFoundExceptionの場合は何もしない（継続してスキャン）
         }
-      }
+      );
     } catch (err) {
-      // バーコードが見つからない場合は継続してスキャン
-      if (err instanceof NotFoundException) {
-        // バーコードが見つからない場合は継続してスキャン
-        if (isScanning && videoRef.current) {
-          setTimeout(() => startScanning(), 100);
-        }
-      } else if (err instanceof Error) {
+      if (err instanceof Error) {
         setError(err.message);
         setIsScanning(false);
         // カメラストリームを停止
@@ -117,6 +107,8 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
       }
       videoRef.current.srcObject = null;
     }
+    
+    // スキャンを停止
     codeReaderRef.current = null;
     setIsScanning(false);
   };
