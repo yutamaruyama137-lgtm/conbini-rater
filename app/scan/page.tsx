@@ -14,14 +14,14 @@ export default function ScanPage() {
       const product = await lookupProduct(barcode);
       if (product && !product.pending) {
         // 商品が見つかり、承認済みの場合
-        router.push(`/product/${barcode}`);
+        router.replace(`/product/${barcode}`);
       } else {
         // 商品が見つからない、またはpendingの場合
-        router.push(`/add/${barcode}`);
+        router.replace(`/add/${barcode}`);
       }
     } catch (error) {
       // エラーが発生した場合も追加フォームへ
-      router.push(`/add/${barcode}`);
+      router.replace(`/add/${barcode}`);
     }
   };
 

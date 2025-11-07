@@ -2,6 +2,13 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+
+// スクロール復元を無効化
+if (typeof window !== 'undefined') {
+  if ('scrollRestoration' in window.history) {
+    window.history.scrollRestoration = 'manual';
+  }
+}
 import { ArrowLeft, Upload, X, Camera, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -105,7 +112,7 @@ export default function AddProductPage({ params }: { params: { barcode: string }
     try {
       const result = await addProduct(formData);
       if (result.success) {
-        router.push(`/product/${params.barcode}`);
+        router.replace(`/product/${params.barcode}`);
       } else {
         alert(result.error || '商品の追加に失敗しました');
       }
@@ -121,11 +128,13 @@ export default function AddProductPage({ params }: { params: { barcode: string }
     <div className="min-h-screen bg-gray-50 pb-20">
       <div className="bg-white">
         <div className="max-w-md mx-auto px-4 py-3 flex items-center gap-3">
-          <Link href="/scan">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-          </Link>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push('/explore')}
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
           <h1 className="text-lg font-semibold flex-1">商品を追加</h1>
         </div>
       </div>

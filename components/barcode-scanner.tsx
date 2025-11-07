@@ -19,6 +19,8 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
   const [isScanning, setIsScanning] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null);
+  const lastDetectedBarcodeRef = useRef<string | null>(null);
+  const detectionCountRef = useRef<number>(0);
 
   useEffect(() => {
     // コンポーネントのアンマウント時にカメラを停止
@@ -47,11 +49,12 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
       codeReaderRef.current = reader;
 
       // 背面カメラ優先（対応端末は 'environment' を使う）
+      // 解像度を上げて精度向上
       const constraints: MediaStreamConstraints = {
         video: {
           facingMode: { ideal: 'environment' },
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
         },
         audio: false
       };
@@ -73,11 +76,29 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
             const text = result.getText();
             // バーコードが8-14桁の数字かチェック
             if (/^\d{8,14}$/.test(text)) {
-              // カメラストリームを停止
-              stopScanning();
-              onScan(text);
+              // 精度向上: 同じバーコードを複数回検出してから確定
+              if (lastDetectedBarcodeRef.current === text) {
+                detectionCountRef.current += 1;
+                // 3回連続で同じバーコードが検出されたら確定
+                if (detectionCountRef.current >= 3) {
+                  stopScanning();
+                  onScan(text);
+                  lastDetectedBarcodeRef.current = null;
+                  detectionCountRef.current = 0;
+                }
+              } else {
+                // 新しいバーコードが検出されたらリセット
+                lastDetectedBarcodeRef.current = text;
+                detectionCountRef.current = 1;
+              }
             } else {
               setError('有効なバーコードを読み取れませんでした。8-14桁の数字が必要です。');
+            }
+          } else {
+            // バーコードが検出されない場合はカウントをリセット
+            if (err instanceof NotFoundException) {
+              lastDetectedBarcodeRef.current = null;
+              detectionCountRef.current = 0;
             }
           }
           // err は検出できないフレームで普通に発生するので握りつぶしてOK（NotFoundException以外は表示）
@@ -113,6 +134,9 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
       videoRef.current.srcObject = null;
     }
     setIsScanning(false);
+    // 検出カウントをリセット
+    lastDetectedBarcodeRef.current = null;
+    detectionCountRef.current = 0;
   };
 
   const handleManualSubmit = (e: React.FormEvent) => {
@@ -127,10 +151,6 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
     }
   };
 
-  const handleDemoScan = () => {
-    stopScanning();
-    onScan('4901330571481');
-  };
 
   return (
     <div className="flex flex-col items-center gap-4 w-full">
@@ -176,22 +196,13 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
 
       <div className="flex gap-2 w-full">
         {!isScanning ? (
-          <>
-            <Button
-              onClick={startScanning}
-              className="flex-1 bg-emerald-500 hover:bg-emerald-600"
-            >
-              <Camera className="w-4 h-4 mr-2" />
-              カメラでスキャン
-            </Button>
-            <Button
-              onClick={handleDemoScan}
-              variant="outline"
-              className="flex-1"
-            >
-              デモスキャン
-            </Button>
-          </>
+          <Button
+            onClick={startScanning}
+            className="w-full bg-emerald-500 hover:bg-emerald-600"
+          >
+            <Camera className="w-4 h-4 mr-2" />
+            カメラでスキャン
+          </Button>
         ) : (
           <Button
             onClick={stopScanning}
