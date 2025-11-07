@@ -17,140 +17,101 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
   const [showManual, setShowManual] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null);
 
   useEffect(() => {
     // コンポーネントのアンマウント時にカメラを停止
     return () => {
-      if (codeReaderRef.current && videoRef.current) {
-        // カメラストリームを停止
-        const stream = videoRef.current.srcObject as MediaStream;
-        if (stream) {
-          stream.getTracks().forEach(track => track.stop());
-        }
-        videoRef.current.srcObject = null;
+      if (codeReaderRef.current) {
         codeReaderRef.current = null;
       }
+      const stream = videoRef.current?.srcObject as MediaStream | null;
+      stream?.getTracks().forEach(t => t.stop());
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+      setIsScanning(false);
     };
   }, []);
 
   const startScanning = async () => {
     if (!videoRef.current) return;
 
+    setError(null);
+    setIsScanning(true);
+
     try {
-      setError(null);
-      setIsScanning(true);
+      // ZXing 初期化
+      const reader = new BrowserMultiFormatReader();
+      codeReaderRef.current = reader;
 
-      const codeReader = new BrowserMultiFormatReader();
-      codeReaderRef.current = codeReader;
+      // 背面カメラ優先（対応端末は 'environment' を使う）
+      const constraints: MediaStreamConstraints = {
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      };
 
-      // 利用可能なカメラデバイスを取得（静的メソッド）
-      const videoInputDevices = await BrowserMultiFormatReader.listVideoInputDevices();
-      
-      if (videoInputDevices.length === 0) {
-        throw new Error('カメラが見つかりません。デバイスにカメラが接続されているか確認してください。');
+      // 許可ダイアログ → ストリーム取得
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play(); // iOS Safari はユーザー操作後だと安定
       }
 
-      // バックカメラを優先的に使用
-      const backCamera = videoInputDevices.find(device => 
-        device.label.toLowerCase().includes('back') || 
-        device.label.toLowerCase().includes('rear')
+      // 連続スキャン開始（検出時ごとにコールバック）
+      reader.decodeFromVideoDevice(
+        undefined, // 既定デバイス
+        videoRef.current,
+        (result, err) => {
+          if (result) {
+            const text = result.getText();
+            // バーコードが8-14桁の数字かチェック
+            if (/^\d{8,14}$/.test(text)) {
+              // カメラストリームを停止
+              stopScanning();
+              onScan(text);
+            } else {
+              setError('有効なバーコードを読み取れませんでした。8-14桁の数字が必要です。');
+            }
+          }
+          // err は検出できないフレームで普通に発生するので握りつぶしてOK（NotFoundException以外は表示）
+          if (err && !(err instanceof NotFoundException)) {
+            setError(err.message || 'スキャン中にエラーが発生しました。');
+          }
+        }
       );
-      const selectedDevice = backCamera || videoInputDevices[0];
-
-      // カメラストリームを明示的に開始
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: selectedDevice.deviceId } }
-        });
-        
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-
-        // 継続的にバーコードをスキャン（decodeFromVideoDeviceを使用）
-        codeReader.decodeFromVideoDevice(
-          selectedDevice.deviceId,
-          videoRef.current,
-          (result, error) => {
-            if (result) {
-              const barcode = result.getText();
-              // バーコードが8-14桁の数字かチェック
-              if (/^\d{8,14}$/.test(barcode)) {
-                // カメラストリームを停止
-                stopScanning();
-                onScan(barcode);
-              } else {
-                setError('有効なバーコードを読み取れませんでした。8-14桁の数字が必要です。');
-              }
-            } else if (error && !(error instanceof NotFoundException)) {
-              // NotFoundException以外のエラーのみ表示
-              setError(error.message || 'スキャン中にエラーが発生しました。');
-            }
-            // NotFoundExceptionの場合は何もしない（継続してスキャン）
-          }
-        );
-      } catch (mediaError) {
-        // getUserMediaが失敗した場合、デバイスIDなしで再試行
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-
-        // 継続的にバーコードをスキャン
-        codeReader.decodeFromVideoDevice(
-          undefined, // デフォルトカメラを使用
-          videoRef.current,
-          (result, error) => {
-            if (result) {
-              const barcode = result.getText();
-              // バーコードが8-14桁の数字かチェック
-              if (/^\d{8,14}$/.test(barcode)) {
-                // カメラストリームを停止
-                stopScanning();
-                onScan(barcode);
-              } else {
-                setError('有効なバーコードを読み取れませんでした。8-14桁の数字が必要です。');
-              }
-            } else if (error && !(error instanceof NotFoundException)) {
-              // NotFoundException以外のエラーのみ表示
-              setError(error.message || 'スキャン中にエラーが発生しました。');
-            }
-            // NotFoundExceptionの場合は何もしない（継続してスキャン）
-          }
-        );
-      }
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-        setIsScanning(false);
-        // カメラストリームを停止
-        if (videoRef.current) {
-          const stream = videoRef.current.srcObject as MediaStream;
-          if (stream) {
-            stream.getTracks().forEach(track => track.stop());
-          }
-          videoRef.current.srcObject = null;
-        }
+    } catch (e: any) {
+      // 失敗時のエラーハンドリング
+      setError(e?.message ?? 'カメラへのアクセスに失敗しました。カメラの許可を確認してください。');
+      setIsScanning(false);
+      
+      // クリーンアップ
+      if (codeReaderRef.current) {
         codeReaderRef.current = null;
+      }
+      const stream = videoRef.current?.srcObject as MediaStream | null;
+      stream?.getTracks().forEach(t => t.stop());
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
       }
     }
   };
 
   const stopScanning = () => {
-    // カメラストリームを停止
+    if (codeReaderRef.current) {
+      codeReaderRef.current = null;
+    }
+    const stream = videoRef.current?.srcObject as MediaStream | null;
+    stream?.getTracks().forEach(t => t.stop());
     if (videoRef.current) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
       videoRef.current.srcObject = null;
     }
-    
-    // スキャンを停止
-    codeReaderRef.current = null;
     setIsScanning(false);
   };
 
@@ -174,7 +135,14 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
   return (
     <div className="flex flex-col items-center gap-4 w-full">
       <div className="relative w-full aspect-[4/3] bg-gray-900 rounded-lg overflow-hidden">
-        {!isScanning ? (
+        <video
+          ref={videoRef}
+          className="w-full h-full object-cover"
+          playsInline // iOS Safari 必須
+          muted       // 自動再生の安定性向上
+        />
+        
+        {!isScanning && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="w-64 h-40 border-2 border-emerald-500 rounded-lg relative">
               <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-emerald-500 rounded-tl-lg" />
@@ -183,13 +151,11 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
               <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-emerald-500 rounded-br-lg" />
             </div>
           </div>
-        ) : (
-          <video
-            ref={videoRef}
-            className="w-full h-full object-cover"
-            playsInline
-            muted
-          />
+        )}
+
+        {/* 簡易ガイドライン */}
+        {isScanning && (
+          <div className="pointer-events-none absolute inset-0 border-2 border-white/50 rounded-lg m-6" />
         )}
 
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent pointer-events-none" />
@@ -284,4 +250,3 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
     </div>
   );
 }
-

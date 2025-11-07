@@ -67,12 +67,6 @@ export default function CameraTestPage() {
       return;
     }
 
-    if (!selectedDeviceId) {
-      addDebugInfo('エラー: カメラデバイスが選択されていません');
-      setError('カメラデバイスを選択してください');
-      return;
-    }
-
     try {
       setError(null);
       setScannedBarcode(null);
@@ -80,122 +74,90 @@ export default function CameraTestPage() {
       setCameraStatus('起動中...');
       addDebugInfo('スキャンを開始...');
 
-      const codeReader = new BrowserMultiFormatReader();
-      codeReaderRef.current = codeReader;
+      // ZXing 初期化
+      const reader = new BrowserMultiFormatReader();
+      codeReaderRef.current = reader;
 
-      addDebugInfo(`デバイスID: ${selectedDeviceId} でスキャンを開始`);
+      // 背面カメラ優先（対応端末は 'environment' を使う）
+      const constraints: MediaStreamConstraints = {
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      };
 
-      // カメラストリームを明示的に開始
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: selectedDeviceId } }
-        });
-        
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          addDebugInfo('カメラストリームを取得しました');
-        }
+      addDebugInfo('カメラへのアクセス許可をリクエスト...');
 
-        // 継続的にバーコードをスキャン
-        codeReader.decodeFromVideoDevice(
-          selectedDeviceId,
-          videoRef.current,
-          (result, error) => {
-            if (result) {
-              const barcode = result.getText();
-              addDebugInfo(`バーコードを検出: ${barcode}`);
-              setScannedBarcode(barcode);
-              setCameraStatus('バーコード検出済み');
-              stopScanning();
-            } else if (error) {
-              if (error instanceof NotFoundException) {
-                // NotFoundExceptionは無視（継続してスキャン）
-                setCameraStatus('スキャン中...');
-              } else {
-                const errorMessage = error.message || '不明なエラー';
-                addDebugInfo(`エラー: ${errorMessage}`);
-                setError(errorMessage);
-                setCameraStatus('エラー');
-              }
-            }
-          }
-        );
-
-        setCameraStatus('スキャン中');
-        addDebugInfo('カメラストリームを開始しました');
-      } catch (mediaError) {
-        // getUserMediaが失敗した場合、デバイスIDなしで再試行
-        addDebugInfo('デバイスID指定で失敗、デフォルトカメラで再試行...');
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          addDebugInfo('デフォルトカメラストリームを取得しました');
-        }
-
-        // 継続的にバーコードをスキャン
-        codeReader.decodeFromVideoDevice(
-          undefined, // デフォルトカメラを使用
-          videoRef.current!,
-          (result, error) => {
-            if (result) {
-              const barcode = result.getText();
-              addDebugInfo(`バーコードを検出: ${barcode}`);
-              setScannedBarcode(barcode);
-              setCameraStatus('バーコード検出済み');
-              stopScanning();
-            } else if (error) {
-              if (error instanceof NotFoundException) {
-                // NotFoundExceptionは無視（継続してスキャン）
-                setCameraStatus('スキャン中...');
-              } else {
-                const errorMessage = error.message || '不明なエラー';
-                addDebugInfo(`エラー: ${errorMessage}`);
-                setError(errorMessage);
-                setCameraStatus('エラー');
-              }
-            }
-          }
-        );
-
-        setCameraStatus('スキャン中');
-        addDebugInfo('カメラストリームを開始しました');
+      // 許可ダイアログ → ストリーム取得
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play(); // iOS Safari はユーザー操作後だと安定
+        addDebugInfo('カメラストリームを取得しました');
       }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : '不明なエラー';
+
+      // 連続スキャン開始（検出時ごとにコールバック）
+      reader.decodeFromVideoDevice(
+        undefined, // 既定デバイス
+        videoRef.current,
+        (result, err) => {
+          if (result) {
+            const text = result.getText();
+            addDebugInfo(`バーコードを検出: ${text}`);
+            setScannedBarcode(text);
+            setCameraStatus('バーコード検出済み');
+            stopScanning();
+          }
+          // err は検出できないフレームで普通に発生するので握りつぶしてOK（NotFoundException以外は表示）
+          if (err && !(err instanceof NotFoundException)) {
+            const errorMessage = err.message || '不明なエラー';
+            addDebugInfo(`エラー: ${errorMessage}`);
+            setError(errorMessage);
+            setCameraStatus('エラー');
+          } else if (err instanceof NotFoundException) {
+            setCameraStatus('スキャン中...');
+          }
+        }
+      );
+
+      setCameraStatus('スキャン中');
+      addDebugInfo('カメラストリームを開始しました');
+    } catch (e: any) {
+      // 失敗時のエラーハンドリング
+      const errorMessage = e?.message ?? 'カメラへのアクセスに失敗しました。カメラの許可を確認してください。';
       addDebugInfo(`エラー: ${errorMessage}`);
       setError(errorMessage);
       setIsScanning(false);
       setCameraStatus('エラー');
       
-      // カメラストリームを停止
+      // クリーンアップ
+      if (codeReaderRef.current) {
+        codeReaderRef.current = null;
+      }
+      const stream = videoRef.current?.srcObject as MediaStream | null;
+      stream?.getTracks().forEach(t => t.stop());
       if (videoRef.current) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        if (stream) {
-          stream.getTracks().forEach(track => track.stop());
-        }
         videoRef.current.srcObject = null;
       }
-      codeReaderRef.current = null;
     }
   };
 
   const stopScanning = () => {
     addDebugInfo('スキャンを停止...');
     
-    // カメラストリームを停止
+    if (codeReaderRef.current) {
+      codeReaderRef.current = null;
+    }
+    
+    const stream = videoRef.current?.srcObject as MediaStream | null;
+    stream?.getTracks().forEach(t => t.stop());
     if (videoRef.current) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      if (stream) {
-        stream.getTracks().forEach(track => {
-          track.stop();
-          addDebugInfo(`トラックを停止: ${track.kind} - ${track.label}`);
-        });
-      }
       videoRef.current.srcObject = null;
     }
     
-    codeReaderRef.current = null;
     setIsScanning(false);
     setCameraStatus('停止');
     addDebugInfo('スキャンを停止しました');
@@ -229,9 +191,8 @@ export default function CameraTestPage() {
               <video
                 ref={videoRef}
                 className="w-full h-full object-cover"
-                playsInline
-                muted
-                autoPlay
+                playsInline // iOS Safari 必須
+                muted       // 自動再生の安定性向上
               />
               {!isScanning && (
                 <div className="absolute inset-0 flex items-center justify-center">

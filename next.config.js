@@ -9,6 +9,16 @@ const nextConfig = {
   experimental: {
     serverActions: true,
   },
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'Permissions-Policy', value: 'camera=(self)' },
+        ],
+      },
+    ];
+  },
 };
 
 module.exports = nextConfig;
