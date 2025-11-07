@@ -59,28 +59,69 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
       );
       const selectedDevice = backCamera || videoInputDevices[0];
 
-      // 継続的にバーコードをスキャン
-      codeReader.decodeFromVideoDevice(
-        selectedDevice.deviceId,
-        videoRef.current,
-        (result, error) => {
-          if (result) {
-            const barcode = result.getText();
-            // バーコードが8-14桁の数字かチェック
-            if (/^\d{8,14}$/.test(barcode)) {
-              // カメラストリームを停止
-              stopScanning();
-              onScan(barcode);
-            } else {
-              setError('有効なバーコードを読み取れませんでした。8-14桁の数字が必要です。');
-            }
-          } else if (error && !(error instanceof NotFoundException)) {
-            // NotFoundException以外のエラーのみ表示
-            setError(error.message || 'スキャン中にエラーが発生しました。');
-          }
-          // NotFoundExceptionの場合は何もしない（継続してスキャン）
+      // カメラストリームを明示的に開始
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: selectedDevice.deviceId } }
+        });
+        
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
         }
-      );
+
+        // 継続的にバーコードをスキャン（decodeFromVideoDeviceを使用）
+        codeReader.decodeFromVideoDevice(
+          selectedDevice.deviceId,
+          videoRef.current,
+          (result, error) => {
+            if (result) {
+              const barcode = result.getText();
+              // バーコードが8-14桁の数字かチェック
+              if (/^\d{8,14}$/.test(barcode)) {
+                // カメラストリームを停止
+                stopScanning();
+                onScan(barcode);
+              } else {
+                setError('有効なバーコードを読み取れませんでした。8-14桁の数字が必要です。');
+              }
+            } else if (error && !(error instanceof NotFoundException)) {
+              // NotFoundException以外のエラーのみ表示
+              setError(error.message || 'スキャン中にエラーが発生しました。');
+            }
+            // NotFoundExceptionの場合は何もしない（継続してスキャン）
+          }
+        );
+      } catch (mediaError) {
+        // getUserMediaが失敗した場合、デバイスIDなしで再試行
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+
+        // 継続的にバーコードをスキャン
+        codeReader.decodeFromVideoDevice(
+          undefined, // デフォルトカメラを使用
+          videoRef.current,
+          (result, error) => {
+            if (result) {
+              const barcode = result.getText();
+              // バーコードが8-14桁の数字かチェック
+              if (/^\d{8,14}$/.test(barcode)) {
+                // カメラストリームを停止
+                stopScanning();
+                onScan(barcode);
+              } else {
+                setError('有効なバーコードを読み取れませんでした。8-14桁の数字が必要です。');
+              }
+            } else if (error && !(error instanceof NotFoundException)) {
+              // NotFoundException以外のエラーのみ表示
+              setError(error.message || 'スキャン中にエラーが発生しました。');
+            }
+            // NotFoundExceptionの場合は何もしない（継続してスキャン）
+          }
+        );
+      }
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);
