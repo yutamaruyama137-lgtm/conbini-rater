@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { BrowserMultiFormatReader, NotFoundException } from '@zxing/browser';
+import { BrowserMultiFormatReader } from '@zxing/browser';
 import { Camera, X, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,8 +22,14 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
   useEffect(() => {
     // コンポーネントのアンマウント時にカメラを停止
     return () => {
-      if (codeReaderRef.current) {
-        codeReaderRef.current.reset();
+      if (codeReaderRef.current && videoRef.current) {
+        // カメラストリームを停止
+        const stream = videoRef.current.srcObject as MediaStream;
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+        }
+        videoRef.current.srcObject = null;
+        codeReaderRef.current = null;
       }
     };
   }, []);
@@ -38,8 +44,8 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
       const codeReader = new BrowserMultiFormatReader();
       codeReaderRef.current = codeReader;
 
-      // 利用可能なカメラデバイスを取得
-      const videoInputDevices = await codeReader.listVideoInputDevices();
+      // 利用可能なカメラデバイスを取得（静的メソッド）
+      const videoInputDevices = await BrowserMultiFormatReader.listVideoInputDevices();
       
       if (videoInputDevices.length === 0) {
         throw new Error('カメラが見つかりません。デバイスにカメラが接続されているか確認してください。');
@@ -63,7 +69,15 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
         const barcode = result.getText();
         // バーコードが8-14桁の数字かチェック
         if (/^\d{8,14}$/.test(barcode)) {
-          codeReader.reset();
+          // カメラストリームを停止
+          if (videoRef.current) {
+            const stream = videoRef.current.srcObject as MediaStream;
+            if (stream) {
+              stream.getTracks().forEach(track => track.stop());
+            }
+            videoRef.current.srcObject = null;
+          }
+          codeReaderRef.current = null;
           setIsScanning(false);
           onScan(barcode);
         } else {
@@ -71,7 +85,8 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
         }
       }
     } catch (err) {
-      if (err instanceof NotFoundException) {
+      // バーコードが見つからない場合は継続してスキャン
+      if (err && typeof err === 'object' && 'name' in err && err.name === 'NotFoundException') {
         // バーコードが見つからない場合は継続してスキャン
         if (isScanning && videoRef.current) {
           setTimeout(() => startScanning(), 100);
@@ -79,18 +94,29 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
       } else if (err instanceof Error) {
         setError(err.message);
         setIsScanning(false);
-        if (codeReaderRef.current) {
-          codeReaderRef.current.reset();
+        // カメラストリームを停止
+        if (videoRef.current) {
+          const stream = videoRef.current.srcObject as MediaStream;
+          if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+          }
+          videoRef.current.srcObject = null;
         }
+        codeReaderRef.current = null;
       }
     }
   };
 
   const stopScanning = () => {
-    if (codeReaderRef.current) {
-      codeReaderRef.current.reset();
-      codeReaderRef.current = null;
+    // カメラストリームを停止
+    if (videoRef.current) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      videoRef.current.srcObject = null;
     }
+    codeReaderRef.current = null;
     setIsScanning(false);
   };
 
