@@ -1,0 +1,43 @@
+{
+  "nav": {
+    "home": "ホーム",
+    "scan": "スキャン",
+    "explore": "探索",
+    "wallet": "ウォレット",
+    "profile": "プロフィール"
+  },
+  "home": {
+    "welcome": "ようこそ",
+    "newArrivals": "新着商品",
+    "topThisWeek": "今週のトップ",
+    "yourRecent": "最近の評価"
+  },
+  "scan": {
+    "title": "商品をスキャン",
+    "instruction": "バーコードにカメラを向けるか、手動で入力してください",
+    "manualInput": "バーコードを手動入力"
+  },
+  "product": {
+    "pending": "検証待ち",
+    "new": "新着",
+    "rateThis": "この商品を評価",
+    "verifyMatch": "確認：一致",
+    "verifyMismatch": "確認：不一致"
+  },
+  "wallet": {
+    "points": "ポイント",
+    "streak": "日連続",
+    "badges": "バッジ",
+    "coupons": "クーポン",
+    "redeem": "交換"
+  },
+  "profile": {
+    "language": "言語",
+    "export": "データエクスポート",
+    "about": "アプリについて"
+  },
+  "common": {
+    "new": "新着",
+    "seeAll": "すべて見る"
+  }
+}

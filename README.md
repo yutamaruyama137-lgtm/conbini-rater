@@ -1,0 +1,1 @@
+conbini-rater

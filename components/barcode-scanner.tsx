@@ -1,0 +1,227 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import { BrowserMultiFormatReader, NotFoundException } from '@zxing/browser';
+import { Camera, X, AlertCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+
+type BarcodeScannerProps = {
+  onScan: (barcode: string) => void;
+};
+
+export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
+  const [manualBarcode, setManualBarcode] = useState('');
+  const [showManual, setShowManual] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null);
+
+  useEffect(() => {
+    // コンポーネントのアンマウント時にカメラを停止
+    return () => {
+      if (codeReaderRef.current) {
+        codeReaderRef.current.reset();
+      }
+    };
+  }, []);
+
+  const startScanning = async () => {
+    if (!videoRef.current) return;
+
+    try {
+      setError(null);
+      setIsScanning(true);
+
+      const codeReader = new BrowserMultiFormatReader();
+      codeReaderRef.current = codeReader;
+
+      // 利用可能なカメラデバイスを取得
+      const videoInputDevices = await codeReader.listVideoInputDevices();
+      
+      if (videoInputDevices.length === 0) {
+        throw new Error('カメラが見つかりません。デバイスにカメラが接続されているか確認してください。');
+      }
+
+      // バックカメラを優先的に使用
+      const backCamera = videoInputDevices.find(device => 
+        device.label.toLowerCase().includes('back') || 
+        device.label.toLowerCase().includes('rear')
+      );
+      const selectedDevice = backCamera || videoInputDevices[0];
+
+      // バーコード読み取りを開始
+      const result = await codeReader.decodeOnceFromVideoDevice(
+        selectedDevice.deviceId,
+        videoRef.current
+      );
+
+      // バーコードが見つかった場合
+      if (result && result.getText()) {
+        const barcode = result.getText();
+        // バーコードが8-14桁の数字かチェック
+        if (/^\d{8,14}$/.test(barcode)) {
+          codeReader.reset();
+          setIsScanning(false);
+          onScan(barcode);
+        } else {
+          setError('有効なバーコードを読み取れませんでした。8-14桁の数字が必要です。');
+        }
+      }
+    } catch (err) {
+      if (err instanceof NotFoundException) {
+        // バーコードが見つからない場合は継続してスキャン
+        if (isScanning && videoRef.current) {
+          setTimeout(() => startScanning(), 100);
+        }
+      } else if (err instanceof Error) {
+        setError(err.message);
+        setIsScanning(false);
+        if (codeReaderRef.current) {
+          codeReaderRef.current.reset();
+        }
+      }
+    }
+  };
+
+  const stopScanning = () => {
+    if (codeReaderRef.current) {
+      codeReaderRef.current.reset();
+      codeReaderRef.current = null;
+    }
+    setIsScanning(false);
+  };
+
+  const handleManualSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (manualBarcode.trim() && /^\d{8,14}$/.test(manualBarcode.trim())) {
+      stopScanning();
+      onScan(manualBarcode.trim());
+      setManualBarcode('');
+      setShowManual(false);
+    } else {
+      setError('有効なバーコードを入力してください（8-14桁の数字）');
+    }
+  };
+
+  const handleDemoScan = () => {
+    stopScanning();
+    onScan('4901330571481');
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-4 w-full">
+      <div className="relative w-full aspect-[4/3] bg-gray-900 rounded-lg overflow-hidden">
+        {!isScanning ? (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-64 h-40 border-2 border-emerald-500 rounded-lg relative">
+              <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-emerald-500 rounded-tl-lg" />
+              <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-emerald-500 rounded-tr-lg" />
+              <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-emerald-500 rounded-bl-lg" />
+              <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-emerald-500 rounded-br-lg" />
+            </div>
+          </div>
+        ) : (
+          <video
+            ref={videoRef}
+            className="w-full h-full object-cover"
+            playsInline
+            muted
+          />
+        )}
+
+        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent pointer-events-none" />
+
+        <Camera className="absolute top-4 left-4 w-6 h-6 text-white" />
+
+        <p className="absolute bottom-4 left-0 right-0 text-center text-white text-sm">
+          {isScanning ? 'バーコードをスキャン中...' : 'Point camera at barcode'}
+        </p>
+      </div>
+
+      {error && (
+        <Alert variant="destructive" className="w-full">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      <div className="flex gap-2 w-full">
+        {!isScanning ? (
+          <>
+            <Button
+              onClick={startScanning}
+              className="flex-1 bg-emerald-500 hover:bg-emerald-600"
+            >
+              <Camera className="w-4 h-4 mr-2" />
+              カメラでスキャン
+            </Button>
+            <Button
+              onClick={handleDemoScan}
+              variant="outline"
+              className="flex-1"
+            >
+              デモスキャン
+            </Button>
+          </>
+        ) : (
+          <Button
+            onClick={stopScanning}
+            variant="destructive"
+            className="w-full"
+          >
+            スキャンを停止
+          </Button>
+        )}
+      </div>
+
+      {!showManual ? (
+        <Button
+          onClick={() => {
+            stopScanning();
+            setShowManual(true);
+          }}
+          variant="secondary"
+          className="w-full"
+        >
+          手入力でバーコードを入力
+        </Button>
+      ) : (
+        <form onSubmit={handleManualSubmit} className="w-full space-y-2">
+          <div className="flex gap-2">
+            <Input
+              type="text"
+              value={manualBarcode}
+              onChange={(e) => {
+                setManualBarcode(e.target.value.replace(/\D/g, ''));
+                setError(null);
+              }}
+              placeholder="バーコードを入力（8-14桁の数字）"
+              className="flex-1"
+              autoFocus
+              maxLength={14}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                setShowManual(false);
+                setManualBarcode('');
+                setError(null);
+              }}
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+          <Button type="submit" className="w-full bg-emerald-500 hover:bg-emerald-600">
+            検索
+          </Button>
+        </form>
+      )}
+    </div>
+  );
+}
+

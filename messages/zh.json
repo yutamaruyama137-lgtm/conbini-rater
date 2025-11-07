@@ -1,0 +1,43 @@
+{
+  "nav": {
+    "home": "首頁",
+    "scan": "掃描",
+    "explore": "探索",
+    "wallet": "錢包",
+    "profile": "個人資料"
+  },
+  "home": {
+    "welcome": "歡迎",
+    "newArrivals": "新品上市",
+    "topThisWeek": "本週熱門",
+    "yourRecent": "最近評價"
+  },
+  "scan": {
+    "title": "掃描產品",
+    "instruction": "將相機對準條碼或手動輸入",
+    "manualInput": "手動輸入條碼"
+  },
+  "product": {
+    "pending": "待驗證",
+    "new": "新品",
+    "rateThis": "評價此產品",
+    "verifyMatch": "驗證：相符",
+    "verifyMismatch": "驗證：不符"
+  },
+  "wallet": {
+    "points": "積分",
+    "streak": "連續天數",
+    "badges": "徽章",
+    "coupons": "優惠券",
+    "redeem": "兌換"
+  },
+  "profile": {
+    "language": "語言",
+    "export": "匯出資料",
+    "about": "關於"
+  },
+  "common": {
+    "new": "新品",
+    "seeAll": "查看全部"
+  }
+}

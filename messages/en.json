@@ -1,0 +1,43 @@
+{
+  "nav": {
+    "home": "Home",
+    "scan": "Scan",
+    "explore": "Explore",
+    "wallet": "Wallet",
+    "profile": "Profile"
+  },
+  "home": {
+    "welcome": "Welcome",
+    "newArrivals": "New Arrivals",
+    "topThisWeek": "Top This Week",
+    "yourRecent": "Your Recent"
+  },
+  "scan": {
+    "title": "Scan Product",
+    "instruction": "Point camera at barcode or enter manually",
+    "manualInput": "Enter Barcode Manually"
+  },
+  "product": {
+    "pending": "Pending Verification",
+    "new": "NEW",
+    "rateThis": "Rate This Product",
+    "verifyMatch": "Verify: Match",
+    "verifyMismatch": "Verify: Mismatch"
+  },
+  "wallet": {
+    "points": "Points",
+    "streak": "Day Streak",
+    "badges": "Badges",
+    "coupons": "Coupons",
+    "redeem": "Redeem"
+  },
+  "profile": {
+    "language": "Language",
+    "export": "Export Data",
+    "about": "About"
+  },
+  "common": {
+    "new": "NEW",
+    "seeAll": "See All"
+  }
+}

@@ -1,0 +1,5 @@
+<svg width="'$size'" height="'$size'" xmlns="http://www.w3.org/2000/svg">
+  <rect width="'$size'" height="'$size'" fill="#10b981"/>
+  <circle cx="$(($size/2))" cy="$(($size/2))" r="$(($size/3))" fill="white" opacity="0.3"/>
+  <text x="$(($size/2))" y="$(($size/2 + $size/8))" font-family="Arial" font-size="$(($size/3))" font-weight="bold" fill="white" text-anchor="middle">C</text>
+</svg>
