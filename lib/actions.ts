@@ -1,217 +1,47 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { supabase } from './supabase';
+import { supabase, Product } from './supabase';
+import { getProductByBarcode, getRatingsByBarcode, getAverageRating } from './db-helpers';
+import { DEMO_PRODUCTS } from './demo-products';
 
-export type ProductWithStats = {
-  barcode: string;
-  title_ja: string;
-  title_en: string | null;
-  title_zh: string | null;
-  brand: string | null;
-  chains: string[];
-  category: string | null;
-  image_url: string | null;
-  pending: boolean;
-  release_date: string | null;
-  avg?: number;
-  count?: number;
-  rank?: number;
+export type ProductWithStats = Product & {
+  avgRating?: number;
+  ratingCount?: number;
 };
 
-export async function lookupProduct(barcode: string) {
-  const { data, error } = await supabase
-    .from('products')
-    .select('*')
-    .eq('barcode', barcode)
-    .maybeSingle();
+export async function lookupProduct(barcode: string): Promise<ProductWithStats | null> {
+  const product = await getProductByBarcode(barcode);
+  if (!product) return null;
 
-  if (error) throw error;
-  return data;
+  const { avg, count } = await getAverageRating(barcode);
+  return {
+    ...product,
+    avgRating: avg,
+    ratingCount: count,
+  };
 }
 
-/**
- * Open Food Factsから商品情報を取得
- */
 export async function lookupFromOpenFoodFacts(barcode: string) {
   try {
-    const { lookupFromProviders } = await import('@/services/barcodeProviders');
-    return await lookupFromProviders(barcode);
+    const response = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
+    const data = await response.json();
+    
+    if (data.status === 1 && data.product) {
+      const product = data.product;
+      return {
+        title_ja: product.product_name_ja || product.product_name || '',
+        title_en: product.product_name_en || product.product_name || '',
+        brand: product.brands || '',
+        category: product.categories || '',
+        image_url: product.image_url || null,
+      };
+    }
+    return null;
   } catch (error) {
     console.error('Open Food Facts lookup error:', error);
     return null;
   }
-}
-
-export async function listProducts(filters?: {
-  sort?: 'new' | 'top' | 'popular';
-  chains?: string[];
-  category?: string;
-  onlyNew?: boolean;
-}) {
-  let query = supabase
-    .from('products')
-    .select('*')
-    .eq('hidden', false)
-    .eq('pending', false);
-
-  if (filters?.chains && filters.chains.length > 0) {
-    query = query.overlaps('chains', filters.chains);
-  }
-
-  if (filters?.category) {
-    query = query.eq('category', filters.category);
-  }
-
-  if (filters?.onlyNew) {
-    const twoWeeksAgo = new Date();
-    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
-    query = query.gte('release_date', twoWeeksAgo.toISOString());
-  }
-
-  if (filters?.sort === 'new') {
-    query = query.order('release_date', { ascending: false });
-  } else {
-    query = query.order('created_at', { ascending: false });
-  }
-
-  const { data: products, error } = await query.limit(50);
-  if (error) throw error;
-
-  const productsWithStats: ProductWithStats[] = await Promise.all(
-    (products || []).map(async (product) => {
-      const { data: ratings } = await supabase
-        .from('ratings')
-        .select('score')
-        .eq('barcode', product.barcode);
-
-      if (!ratings || ratings.length === 0) {
-        return { ...product, avg: 0, count: 0 };
-      }
-
-      const sum = ratings.reduce((acc, r) => acc + r.score, 0);
-      const avg = sum / ratings.length;
-
-      return { ...product, avg, count: ratings.length };
-    })
-  );
-
-  if (filters?.sort === 'top' || filters?.sort === 'popular') {
-    productsWithStats.sort((a, b) => {
-      if (filters.sort === 'popular') {
-        return (b.count || 0) - (a.count || 0);
-      }
-      return (b.avg || 0) - (a.avg || 0);
-    });
-  }
-
-  return { items: productsWithStats };
-}
-
-/**
- * 検証を追加
- */
-export async function submitVerification(formData: FormData) {
-  const barcode = formData.get('barcode') as string;
-  const verdict = formData.get('verdict') as string; // 'match' or 'mismatch'
-  const userId = formData.get('user_id') as string || 'anonymous';
-
-  if (!barcode || !verdict || (verdict !== 'match' && verdict !== 'mismatch')) {
-    return { success: false, error: '無効なリクエストです' };
-  }
-
-  // 既に検証しているかチェック
-  const { data: existing } = await supabase
-    .from('verifications')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('barcode', barcode)
-    .maybeSingle();
-
-  if (existing) {
-    return { success: false, error: '既に検証済みです' };
-  }
-
-  // 検証を追加
-  const { error } = await supabase.from('verifications').insert({
-    id: crypto.randomUUID(),
-    user_id: userId,
-    barcode,
-    verdict,
-    created_at: new Date().toISOString(),
-  });
-
-  if (error) {
-    return { success: false, error: error.message };
-  }
-
-  // 検証状況を確認して商品のpending状態を更新
-  const { data: verifications } = await supabase
-    .from('verifications')
-    .select('*')
-    .eq('barcode', barcode)
-    .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()); // 24時間以内
-
-  if (verifications) {
-    const matchCount = verifications.filter((v) => v.verdict === 'match').length;
-    const mismatchCount = verifications.filter((v) => v.verdict === 'mismatch').length;
-
-    // Match≥3 && Mismatch<3で確定
-    if (matchCount >= 3 && mismatchCount < 3) {
-      await supabase
-        .from('products')
-        .update({ pending: false })
-        .eq('barcode', barcode);
-    }
-    // Mismatch≥3で一時非表示
-    else if (mismatchCount >= 3) {
-      await supabase
-        .from('products')
-        .update({ hidden: true })
-        .eq('barcode', barcode);
-    }
-  }
-
-  // ポイント付与（先着3名のみ）
-  try {
-    const { rewardVerification } = await import('@/lib/rewards');
-    await rewardVerification(userId, barcode);
-  } catch (error) {
-    console.error('ポイント付与エラー:', error);
-  }
-
-  revalidatePath(`/product/${barcode}`);
-  return { success: true };
-}
-
-/**
- * 検証状況を取得
- */
-export async function getVerificationStatus(barcode: string) {
-  const { data: verifications } = await supabase
-    .from('verifications')
-    .select('*')
-    .eq('barcode', barcode)
-    .order('created_at', { ascending: false });
-
-  if (!verifications) {
-    return {
-      matchCount: 0,
-      mismatchCount: 0,
-      totalCount: 0,
-      userVerdict: null,
-    };
-  }
-
-  const matchCount = verifications.filter((v) => v.verdict === 'match').length;
-  const mismatchCount = verifications.filter((v) => v.verdict === 'mismatch').length;
-
-  return {
-    matchCount,
-    mismatchCount,
-    totalCount: verifications.length,
-    verifications,
-  };
 }
 
 export async function submitRating(formData: FormData) {
@@ -332,4 +162,105 @@ export async function addProduct(formData: FormData) {
   revalidatePath('/explore');
 
   return { success: true };
+}
+
+export async function submitVerification(formData: FormData) {
+  const barcode = formData.get('barcode') as string;
+  const verdict = formData.get('verdict') as string;
+
+  if (!barcode || !verdict) {
+    return { success: false, error: 'Missing required fields' };
+  }
+
+  const verificationId = crypto.randomUUID();
+
+  const { error } = await supabase.from('verifications').insert({
+    id: verificationId,
+    barcode,
+    user_id: 'anonymous',
+    verdict,
+    created_at: new Date().toISOString(),
+  });
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  // ポイント付与
+  try {
+    const { rewardVerification } = await import('@/lib/rewards');
+    const userId = 'anonymous'; // TODO: 認証実装時に変更
+    await rewardVerification(userId, barcode);
+  } catch (error) {
+    console.error('ポイント付与エラー:', error);
+  }
+
+  revalidatePath(`/product/${barcode}`);
+  revalidatePath('/explore');
+
+  return { success: true };
+}
+
+export async function getVerificationStatus(barcode: string) {
+  const { data, error } = await supabase
+    .from('verifications')
+    .select('*')
+    .eq('barcode', barcode)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true, verifications: data || [] };
+}
+
+/**
+ * デモ商品をデータベースに追加
+ */
+export async function seedDemoProducts() {
+  const results = [];
+  
+  for (const product of DEMO_PRODUCTS) {
+    // 既存チェック
+    const { data: existing } = await supabase
+      .from('products')
+      .select('barcode')
+      .eq('barcode', product.barcode)
+      .maybeSingle();
+
+    if (existing) {
+      // 既に存在する場合はスキップ
+      results.push({ barcode: product.barcode, status: 'skipped' });
+      continue;
+    }
+
+    // 商品を追加（pending=falseで承認済みとして追加）
+    const { error } = await supabase.from('products').insert({
+      barcode: product.barcode,
+      title_ja: product.title_ja,
+      title_en: product.title_en,
+      title_zh: null,
+      brand: product.brand,
+      chains: product.chains,
+      category: product.category,
+      image_url: product.image_url || null,
+      pending: false, // デモ商品は承認済み
+      created_by: 'system',
+      release_date: product.release_date || null,
+      created_at: new Date().toISOString(),
+      hidden: false,
+    });
+
+    if (error) {
+      results.push({ barcode: product.barcode, status: 'error', error: error.message });
+    } else {
+      results.push({ barcode: product.barcode, status: 'added' });
+    }
+  }
+
+  revalidatePath('/');
+  revalidatePath('/explore');
+  
+  return { success: true, results };
 }

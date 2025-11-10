@@ -9,6 +9,7 @@ const navItems = [
   { href: '/', icon: Home, label: 'Home' },
   { href: '/scan', icon: ScanLine, label: 'Scan' },
   { href: '/explore', icon: Compass, label: 'Explore' },
+  { href: '/rewards', icon: Wallet, label: 'Rewards' },
   { href: '/profile', icon: User, label: 'Profile' }
 ];
 

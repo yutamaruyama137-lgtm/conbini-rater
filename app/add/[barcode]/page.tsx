@@ -131,7 +131,15 @@ export default function AddProductPage({ params }: { params: { barcode: string }
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => router.push('/explore')}
+            onClick={() => {
+              // 安全にホームページに戻る
+              try {
+                router.replace('/');
+              } catch (error) {
+                // エラーが発生した場合はブラウザの戻るボタンを使用
+                window.history.back();
+              }
+            }}
           >
             <ArrowLeft className="w-5 h-5" />
           </Button>

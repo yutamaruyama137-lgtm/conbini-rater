@@ -6,10 +6,51 @@ import { ProductCard } from '@/components/product-card';
 import { SectionHeader } from '@/components/section-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LangSwitch } from '@/components/lang-switch';
-import { getNewProducts, getTopRatedProducts } from '@/lib/db-helpers';
+import { getNewProducts, getTopRatedProducts, getProducts } from '@/lib/db-helpers';
+import { seedDemoProducts } from '@/lib/actions';
 
 async function NewArrivals() {
+  // 商品が少ない場合はデモ商品を追加
+  const allProducts = await getProducts();
+  if (allProducts.length === 0) {
+    // デモ商品を追加（非同期で実行、エラーは無視）
+    seedDemoProducts().catch(console.error);
+    // デモ商品を取得
+    const demoProducts = await getProducts(5);
+    if (demoProducts.length > 0) {
+      return (
+        <div className="overflow-x-auto -mx-4 px-4">
+          <div className="flex gap-3 pb-2">
+            {demoProducts.map((product) => (
+              <div key={product.barcode} className="w-72 flex-shrink-0">
+                <ProductCard product={product} />
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+  }
+
   const products = await getNewProducts(14, 5);
+
+  // 商品がない場合はすべての商品を表示
+  if (products.length === 0) {
+    const allProducts = await getProducts(5);
+    if (allProducts.length > 0) {
+      return (
+        <div className="overflow-x-auto -mx-4 px-4">
+          <div className="flex gap-3 pb-2">
+            {allProducts.map((product) => (
+              <div key={product.barcode} className="w-72 flex-shrink-0">
+                <ProductCard product={product} />
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+  }
 
   return (
     <div className="overflow-x-auto -mx-4 px-4">
@@ -26,6 +67,23 @@ async function NewArrivals() {
 
 async function TopThisWeek() {
   const products = await getTopRatedProducts(6);
+
+  // 評価がある商品がない場合は、すべての商品を表示
+  if (products.length === 0) {
+    const allProducts = await getProducts(6);
+    return (
+      <div className="grid grid-cols-2 gap-3">
+        {allProducts.map((product) => (
+          <ProductCard
+            key={product.barcode}
+            product={product}
+            avgRating={0}
+            ratingCount={0}
+          />
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-2 gap-3">
